@@ -27,7 +27,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     async def domotz_metrics_variables_list(
         agent_id: AgentId,
         device_id: DeviceId,
-        page_size: Annotated[int | None, Field(description="Variables per page (max 1000).", ge=1, le=1000)] = None,
+        page_size: Annotated[int | None, Field(description="Variables per page (max 200).", ge=1, le=200)] = None,
         page_number: Annotated[int | None, Field(description="Page number, from 0.", ge=0)] = None,
         has_history: Annotated[bool | None, Field(description="Only variables that keep a value history.")] = None,
     ) -> str:

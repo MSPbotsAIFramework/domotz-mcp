@@ -26,7 +26,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def domotz_agents_list(
         display_name: Annotated[str | None, Field(description="Only collectors whose name contains this text.")] = None,
-        page_size: Annotated[int | None, Field(description="Collectors per page.", ge=1, le=1000)] = None,
+        page_size: Annotated[int | None, Field(description="Collectors per page (max 200).", ge=1, le=200)] = None,
         page_number: Annotated[int | None, Field(description="Page number, from 0.", ge=0)] = None,
     ) -> str:
         """List Domotz collectors (one per site) with status, IP address, location and licence."""

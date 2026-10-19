@@ -114,3 +114,10 @@ def test_tool_without_credentials_returns_not_configured():
 def test_navigate_needs_no_credentials():
     content, _ = asyncio.run(create_mcp_server().call_tool("domotz_navigate", {"domain": "power"}))
     assert json.loads(content[0].text)["tools"] == ["domotz_power_outlets_list", "domotz_power_outlet_control"]
+
+
+@pytest.mark.parametrize("name", ["domotz_agents_list", "domotz_metrics_variables_list"])
+def test_page_size_capped_at_200(tools, name):
+    schema = tools[name].inputSchema["properties"]["page_size"]
+    maxima = [schema.get("maximum")] + [option.get("maximum") for option in schema.get("anyOf", [])]
+    assert 200 in maxima and not any(m and m > 200 for m in maxima)
