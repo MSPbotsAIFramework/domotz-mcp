@@ -82,6 +82,9 @@ class DomotzError(Exception):
 class DomotzCredentials:
     api_key: str
     base_url: str
+    # Set when a header value is malformed: tools then return invalid_argument
+    # instead of calling Domotz, while tools/list still works.
+    header_error: str | None = None
 
     def __repr__(self) -> str:  # never leak the key into logs or tracebacks
         return f"DomotzCredentials(base_url={self.base_url!r}, api_key=<redacted>)"
@@ -93,6 +96,7 @@ class DomotzClient:
     def __init__(self, credentials: DomotzCredentials, http_client: httpx.AsyncClient | None = None):
         self._credentials = credentials
         self._http = http_client
+        self.header_error = credentials.header_error
         self.base_url = credentials.base_url.rstrip("/")
 
     async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:

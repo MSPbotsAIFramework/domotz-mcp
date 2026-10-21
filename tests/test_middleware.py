@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Credential middleware: 401/400 on bad headers, region resolution, isolation."""
+"""Credential middleware: 401 on a missing key, deferred header errors, region resolution, isolation."""
 
 import asyncio
 
@@ -56,10 +56,21 @@ def test_missing_key_returns_401(value):
 
 
 @pytest.mark.parametrize("region", ["mars", "https://evil.example.com/public-api/v1", "http://api-us-east-1-cell-1.domotz.com"])
-def test_bad_region_returns_400(region):
+def test_bad_region_is_reported_by_tools(region):
+    call = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "domotz_status", "arguments": {}}}
     with _client() as client:
-        resp = client.post("/mcp", json=LIST_TOOLS, headers=MCP_HEADERS | {"X-Domotz-API-Key": "k", "X-Domotz-Region": region})
-    assert resp.status_code == 400
+        resp = client.post("/mcp", json=call, headers=MCP_HEADERS | {"X-Domotz-API-Key": "k", "X-Domotz-Region": region})
+    assert resp.status_code == 200
+    assert '\\"invalid_argument\\"' in resp.text and "X-Domotz-Region must be us, eu" in resp.text
+
+
+def test_placeholder_headers_still_list_tools():
+    # The admin console refreshes the tool catalog with placeholder header values.
+    headers = {"X-Domotz-API-Key": "placeholder", "X-Domotz-Region": "placeholder"}
+    with _client() as client:
+        resp = client.post("/mcp", json=LIST_TOOLS, headers=MCP_HEADERS | headers)
+    assert resp.status_code == 200
+    assert "domotz_devices_list" in resp.text
 
 
 @pytest.mark.parametrize(
@@ -110,7 +121,14 @@ def test_key_and_region_reach_request_context_and_are_reset():
     seen = _run_middleware([(b"x-domotz-api-key", b" key-123 "), (b"x-domotz-region", b"eu")])
     assert seen["credentials"].api_key == "key-123"
     assert seen["client"].base_url == EU
+    assert seen["client"].header_error is None
     assert _credentials_var.get() is None
+
+
+def test_bad_region_falls_back_to_default_endpoint():
+    seen = _run_middleware([(b"x-domotz-api-key", b"key-123"), (b"x-domotz-region", b"mars")])
+    assert seen["client"].base_url == US
+    assert "X-Domotz-Region must be" in seen["client"].header_error
 
 
 def test_concurrent_requests_do_not_share_credentials():

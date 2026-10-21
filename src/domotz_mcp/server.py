@@ -97,7 +97,11 @@ def resolve_base_url(region: str | None) -> str | None:
 
 
 class GatewayCredentialsMiddleware:
-    """Reads X-Domotz-API-Key (and optional X-Domotz-Region) on /mcp requests; 401 when the key is missing."""
+    """Reads X-Domotz-API-Key (and optional X-Domotz-Region) on /mcp requests; 401 when the key is missing.
+
+    A malformed region does not block the request (tools/list must work with any
+    values); tools report it instead.
+    """
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -121,19 +125,16 @@ class GatewayCredentialsMiddleware:
             )(scope, receive, send)
             return
         base_url = resolve_base_url(_clean(request.headers.get(HEADER_REGION)))
+        header_error = None
         if base_url is None:
-            await JSONResponse(
-                {
-                    "error": "Invalid region",
-                    "message": f"{HEADER_REGION} must be us, eu, us-east-1, eu-west-1 or the https API endpoint "
-                    "shown in the Domotz portal",
-                },
-                status_code=400,
-            )(scope, receive, send)
-            return
+            header_error = (
+                f"{HEADER_REGION} must be us, eu, us-east-1, eu-west-1 or the https API endpoint "
+                "shown in the Domotz portal"
+            )
+            base_url = API_URL_TEMPLATE.format(region=DEFAULT_REGION)
 
         request_id = (request.headers.get("x-request-id") or "").strip()[:64] or uuid.uuid4().hex[:12]
-        creds_token = _credentials_var.set(DomotzCredentials(api_key, base_url))
+        creds_token = _credentials_var.set(DomotzCredentials(api_key, base_url, header_error))
         rid_token = request_id_var.set(request_id)
         try:
             await self.app(scope, receive, send)

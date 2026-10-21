@@ -28,7 +28,7 @@ How the key is sent to Domotz: every call goes to
 `https://api-{region}-cell-1.domotz.com/public-api/v1/...` with the key in the `X-Api-Key`
 header. An endpoint URL is accepted only over https on a `domotz.com` host.
 
-A request to `/mcp` without the key gets HTTP 401; an unknown region gets HTTP 400.
+A request to `/mcp` without the key gets HTTP 401; an unknown region does not block the request, and tools return `invalid_argument` instead.
 
 ## Tools
 
