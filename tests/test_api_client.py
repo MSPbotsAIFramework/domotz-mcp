@@ -21,6 +21,7 @@ import pytest
 from domotz_mcp import api_client
 from domotz_mcp.api_client import DomotzClient, DomotzCredentials, DomotzError
 from domotz_mcp.server import _credentials_var, create_mcp_server
+from domotz_mcp.tools._common import AGENT_DEFAULT_PAGE_SIZE, VARIABLE_DEFAULT_PAGE_SIZE
 
 BASE = "https://api-us-east-1-cell-1.domotz.com/public-api/v1"
 CREDS = DomotzCredentials("key-123", BASE)
@@ -209,14 +210,16 @@ PAGED_TOOLS = [
     ("domotz_agents_list", "agent", "agents", {}),
     ("domotz_metrics_variables_list", "agent/7/device/9/variable", "variables", {"agent_id": 7, "device_id": 9}),
 ]
+# Page size each endpoint uses when the request names none (Domotz OpenAPI definition).
+DEFAULT_SIZE = {"agent": 10, "agent/7/device/9/variable": 100}
 
 
 def _paged_api(path, rows):
-    """Pages by page_number (from 0) / page_size like Domotz (default page size 100)."""
+    """Pages by page_number (from 0) / page_size like Domotz, with the endpoint's own default size."""
 
     def reply(request):
         number = int(request.url.params.get("page_number", 0))
-        size = int(request.url.params.get("page_size", 100))
+        size = int(request.url.params.get("page_size", DEFAULT_SIZE[path]))
         return httpx.Response(200, json=rows[number * size : (number + 1) * size])
 
     return Recorder({path: reply})
@@ -258,16 +261,18 @@ async def test_cut_pages_continue_without_gaps_from_a_later_page(monkeypatch, to
 @pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
 async def test_cut_pages_continue_without_a_page_size(monkeypatch, tool, path, key, extra):
     ids, cut = await _walk(monkeypatch, _paged_api(path, ROWS), tool, key, extra)
-    assert cut > 0
+    # Variables default to 100 per page, which is cut; agents default to 10, which fits.
+    assert (cut > 0) is (DEFAULT_SIZE[path] == 100)
     assert ids == [r["id"] for r in ROWS]
 
 
 @pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
-@pytest.mark.parametrize("offset,size,page,first", [(30, 25, 1, 30), (50, 25, 2, 50), (0, 25, 0, 0), (107, None, 1, 107)])
+@pytest.mark.parametrize("offset,size,page,first", [(30, 25, 1, 30), (50, 25, 2, 50), (0, 25, 0, 0), (107, None, None, 107)])
 async def test_offset_reads_the_page_that_holds_it(monkeypatch, tool, path, key, extra, offset, size, page, first):
+    page = offset // DEFAULT_SIZE[path] if page is None else page
     rec = _paged_api(path, SMALL)
     result = await _call(monkeypatch, rec, tool, extra | {"offset": offset} | ({"page_size": size} if size else {}))
-    size = size or 100  # sent explicitly with offset, so the read is exact
+    size = size or DEFAULT_SIZE[path]  # sent explicitly with offset, so the read is exact
     assert _sent(rec) == (page, size)
     assert result[key][0]["id"] == first and result["offset"] == offset
     expected_next = (page + 1) * size if (page + 1) * size < TOTAL else None
@@ -289,16 +294,25 @@ async def test_offset_wins_over_page_number(monkeypatch, tool, path, key, extra)
 
 @pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
 @pytest.mark.parametrize(
-    "args,sent,ids",
+    "args,sent,pages",
     [
-        ({"page_number": 2, "page_size": 25}, {"page_number": "2", "page_size": "25"}, list(range(50, 75))),
-        ({"page_number": 1}, {"page_number": "1"}, list(range(100, TOTAL))),
-        ({}, {}, list(range(100))),
+        ({"page_number": 2, "page_size": 25}, {"page_number": "2", "page_size": "25"}, (2, 25)),
+        ({"page_number": 1}, {"page_number": "1"}, (1, None)),
+        ({}, {}, (0, None)),
     ],
 )
-async def test_page_number_only_sends_the_same_request_as_before(monkeypatch, tool, path, key, extra, args, sent, ids):
+async def test_page_number_only_sends_the_same_request_as_before(monkeypatch, tool, path, key, extra, args, sent, pages):
+    number, size = pages[0], pages[1] or DEFAULT_SIZE[path]
+    ids = list(range(number * size, min((number + 1) * size, TOTAL)))
     rec = _paged_api(path, SMALL)
     result = await _call(monkeypatch, rec, tool, extra | args)
     assert dict(rec.requests[0].url.params) == sent
     assert [r["id"] for r in result[key]] == ids
     assert result["offset"] == ids[0] and result.get("next_offset") == (ids[-1] + 1 if ids[-1] + 1 < TOTAL else None)
+
+
+
+def test_default_page_sizes_match_the_domotz_api_definition():
+    # GET /agent defaults to 10 per page and the variable lists to 100 (Domotz OpenAPI definition):
+    # next_offset after a page-number-only call must use the endpoint's own default.
+    assert (AGENT_DEFAULT_PAGE_SIZE, VARIABLE_DEFAULT_PAGE_SIZE) == (10, 100)

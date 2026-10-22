@@ -20,6 +20,7 @@ from pydantic import Field
 
 from ..api_client import DomotzClient
 from ._common import (
+    AGENT_DEFAULT_PAGE_SIZE,
     READ_ONLY,
     AgentId,
     ClientFactory,
@@ -41,7 +42,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """List Domotz collectors (one per site) with status, IP address, location and licence."""
 
         async def action(client: DomotzClient) -> dict:
-            paging, number, size, start = locate(offset, page_number, page_size)
+            paging, number, size, start = locate(offset, page_number, page_size, AGENT_DEFAULT_PAGE_SIZE)
             params = {"display_name": (display_name or "").strip() or None} | paging
             agents = await client.get("agent", params) or []
             if not isinstance(agents, list):

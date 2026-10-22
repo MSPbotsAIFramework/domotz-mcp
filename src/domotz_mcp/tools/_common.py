@@ -48,18 +48,22 @@ Offset = Annotated[
     Field(description="Record position to start from (0-based, overrides page_number); pass next_offset from the previous result.", ge=0),
 ]
 
-# Domotz's page size when a request names none (its list endpoints default to 100 per page).
-API_DEFAULT_PAGE_SIZE = 100
+# Domotz's page size when a request names none, per endpoint (public API OpenAPI definition,
+# /meta/open-api-definition): GET /agent defaults to 10, the variable lists to 100.
+AGENT_DEFAULT_PAGE_SIZE = 10
+VARIABLE_DEFAULT_PAGE_SIZE = 100
 
 
-def locate(offset: int | None, page_number: int | None, page_size: int | None) -> tuple[dict[str, int | None], int, int, int]:
+def locate(
+    offset: int | None, page_number: int | None, page_size: int | None, default_size: int
+) -> tuple[dict[str, int | None], int, int, int]:
     """(paging params, page_number, page_size, start) for a read from record ``start``.
 
     Domotz pages by number only (from 0), so a position is reached by asking for the page that
     holds it (same page size) and skipping the records before it. Without offset the request
     carries page_number / page_size exactly as given, as before.
     """
-    size = page_size or API_DEFAULT_PAGE_SIZE
+    size = page_size or default_size
     if offset is None:
         number = page_number or 0
         return {"page_size": page_size, "page_number": page_number}, number, size, number * size

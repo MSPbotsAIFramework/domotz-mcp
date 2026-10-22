@@ -21,6 +21,7 @@ from pydantic import Field
 from ..api_client import DomotzClient
 from ._common import (
     READ_ONLY,
+    VARIABLE_DEFAULT_PAGE_SIZE,
     AgentId,
     ClientFactory,
     DeviceId,
@@ -47,7 +48,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """List a device's monitored variables (SNMP / driver metrics) with current value and unit."""
 
         async def action(client: DomotzClient) -> Any:
-            paging, number, size, start = locate(offset, page_number, page_size)
+            paging, number, size, start = locate(offset, page_number, page_size, VARIABLE_DEFAULT_PAGE_SIZE)
             variables = await client.get(f"agent/{agent_id}/device/{device_id}/variable", paging | {"has_history": has_history})
             if not isinstance(variables, list):
                 return variables
