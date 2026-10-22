@@ -194,3 +194,111 @@ async def test_outlet_control_posts_action(monkeypatch):
     result = await _call(monkeypatch, rec, "domotz_power_outlet_control", args)
     assert rec.calls("agent/7/device/9/power-outlet/3/action/cycle", "POST")
     assert result["sent"] is True and result["outlet_id"] == "3"
+
+
+# ---- Page-number paging that survives truncation (offset / next_offset) -----------------------------
+# Self-test checklist: a cut page continues right after the last record returned (from page 0 and
+# from a later page); offset aligned / not aligned to a page; offset 0; offset past the end; offset
+# wins over page_number; page_number-only calls send the same request as before; no retry hint.
+
+TOTAL = 137
+ROWS = [{"id": i, "name": f"Row {i}", **{f"f{k}": f"value {k}" for k in range(40)}} for i in range(TOTAL)]
+SMALL = [{"id": i} for i in range(TOTAL)]
+
+PAGED_TOOLS = [
+    ("domotz_agents_list", "agent", "agents", {}),
+    ("domotz_metrics_variables_list", "agent/7/device/9/variable", "variables", {"agent_id": 7, "device_id": 9}),
+]
+
+
+def _paged_api(path, rows):
+    """Pages by page_number (from 0) / page_size like Domotz (default page size 100)."""
+
+    def reply(request):
+        number = int(request.url.params.get("page_number", 0))
+        size = int(request.url.params.get("page_size", 100))
+        return httpx.Response(200, json=rows[number * size : (number + 1) * size])
+
+    return Recorder({path: reply})
+
+
+def _sent(rec):
+    params = rec.requests[0].url.params
+    return int(params["page_number"]), int(params["page_size"])
+
+
+async def _walk(monkeypatch, rec, tool, key, args):
+    ids, calls, cut = [], 0, 0
+    while True:
+        result = await _call(monkeypatch, rec, tool, args)
+        calls += 1
+        assert "retry_page_size" not in result, result.get("note")
+        cut += bool(result.get("truncated"))
+        ids += [r["id"] for r in result[key]]
+        if result.get("next_offset") is None:
+            return ids, cut
+        args = {k: v for k, v in args.items() if k != "page_number"} | {"offset": result["next_offset"]}
+        assert calls < 200
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+async def test_cut_pages_continue_without_gaps_from_page_0(monkeypatch, tool, path, key, extra):
+    ids, cut = await _walk(monkeypatch, _paged_api(path, ROWS), tool, key, extra | {"page_size": 50})
+    assert cut > 0  # pages really were cut
+    assert ids == [r["id"] for r in ROWS]  # no gaps, no duplicates
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+async def test_cut_pages_continue_without_gaps_from_a_later_page(monkeypatch, tool, path, key, extra):
+    ids, cut = await _walk(monkeypatch, _paged_api(path, ROWS), tool, key, extra | {"page_number": 2, "page_size": 40})
+    assert cut > 0
+    assert ids == [r["id"] for r in ROWS[80:]]
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+async def test_cut_pages_continue_without_a_page_size(monkeypatch, tool, path, key, extra):
+    ids, cut = await _walk(monkeypatch, _paged_api(path, ROWS), tool, key, extra)
+    assert cut > 0
+    assert ids == [r["id"] for r in ROWS]
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+@pytest.mark.parametrize("offset,size,page,first", [(30, 25, 1, 30), (50, 25, 2, 50), (0, 25, 0, 0), (107, None, 1, 107)])
+async def test_offset_reads_the_page_that_holds_it(monkeypatch, tool, path, key, extra, offset, size, page, first):
+    rec = _paged_api(path, SMALL)
+    result = await _call(monkeypatch, rec, tool, extra | {"offset": offset} | ({"page_size": size} if size else {}))
+    size = size or 100  # sent explicitly with offset, so the read is exact
+    assert _sent(rec) == (page, size)
+    assert result[key][0]["id"] == first and result["offset"] == offset
+    expected_next = (page + 1) * size if (page + 1) * size < TOTAL else None
+    assert result.get("next_offset") == expected_next  # rest of the page returned, next page starts after it
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+async def test_offset_past_the_end_is_empty(monkeypatch, tool, path, key, extra):
+    result = await _call(monkeypatch, _paged_api(path, SMALL), tool, extra | {"offset": 500, "page_size": 25})
+    assert (result["count"], result["has_more"], result.get("next_offset")) == (0, False, None)
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+async def test_offset_wins_over_page_number(monkeypatch, tool, path, key, extra):
+    rec = _paged_api(path, SMALL)
+    result = await _call(monkeypatch, rec, tool, extra | {"offset": 10, "page_number": 4, "page_size": 10})
+    assert _sent(rec) == (1, 10) and result[key][0]["id"] == 10
+
+
+@pytest.mark.parametrize("tool,path,key,extra", PAGED_TOOLS)
+@pytest.mark.parametrize(
+    "args,sent,ids",
+    [
+        ({"page_number": 2, "page_size": 25}, {"page_number": "2", "page_size": "25"}, list(range(50, 75))),
+        ({"page_number": 1}, {"page_number": "1"}, list(range(100, TOTAL))),
+        ({}, {}, list(range(100))),
+    ],
+)
+async def test_page_number_only_sends_the_same_request_as_before(monkeypatch, tool, path, key, extra, args, sent, ids):
+    rec = _paged_api(path, SMALL)
+    result = await _call(monkeypatch, rec, tool, extra | args)
+    assert dict(rec.requests[0].url.params) == sent
+    assert [r["id"] for r in result[key]] == ids
+    assert result["offset"] == ids[0] and result.get("next_offset") == (ids[-1] + 1 if ids[-1] + 1 < TOTAL else None)

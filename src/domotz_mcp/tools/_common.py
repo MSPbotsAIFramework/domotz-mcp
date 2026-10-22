@@ -43,6 +43,50 @@ DeviceId = Annotated[int, Field(description="Device id from domotz_devices_list.
 From = Annotated[str | None, Field(description="Window start, ISO 8601 (e.g. 2026-06-01T00:00:00Z).")]
 To = Annotated[str | None, Field(description="Window end, ISO 8601 (default now).")]
 
+Offset = Annotated[
+    int | None,
+    Field(description="Record position to start from (0-based, overrides page_number); pass next_offset from the previous result.", ge=0),
+]
+
+# Domotz's page size when a request names none (its list endpoints default to 100 per page).
+API_DEFAULT_PAGE_SIZE = 100
+
+
+def locate(offset: int | None, page_number: int | None, page_size: int | None) -> tuple[dict[str, int | None], int, int, int]:
+    """(paging params, page_number, page_size, start) for a read from record ``start``.
+
+    Domotz pages by number only (from 0), so a position is reached by asking for the page that
+    holds it (same page size) and skipping the records before it. Without offset the request
+    carries page_number / page_size exactly as given, as before.
+    """
+    size = page_size or API_DEFAULT_PAGE_SIZE
+    if offset is None:
+        number = page_number or 0
+        return {"page_size": page_size, "page_number": page_number}, number, size, number * size
+    number = offset // size
+    return {"page_size": size, "page_number": number}, number, size, offset
+
+
+def page_result(key: str, payload: Any, number: int, size: int, start: int) -> dict:
+    """Records from ``start`` of page ``number``: {<key>, count, page_number, page_size, has_more, offset, next_offset}.
+
+    next_offset continues right after the last record returned, also when the result is cut to
+    fit the size limit (a page number cannot: the rest of a cut page is on no other page).
+    """
+    rows = payload if isinstance(payload, list) else []
+    more = len(rows) >= size
+    items = rows[start - number * size :]
+    return {
+        key: items,
+        "count": len(items),
+        "page_number": number,
+        "page_size": size,
+        "has_more": more,
+        "offset": start,
+        "next_offset": start + len(items) if more else None,
+        "_resume": {"key": "next_offset", "start": start},
+    }
+
 
 def window(start: str | None, end: str | None) -> dict[str, str | None]:
     """Validate an optional ISO 8601 from / to pair and return Domotz query params."""

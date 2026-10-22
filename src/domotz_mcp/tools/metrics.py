@@ -19,7 +19,19 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import DomotzClient
-from ._common import READ_ONLY, AgentId, ClientFactory, DeviceId, From, To, run_tool, window
+from ._common import (
+    READ_ONLY,
+    AgentId,
+    ClientFactory,
+    DeviceId,
+    From,
+    Offset,
+    To,
+    locate,
+    page_result,
+    run_tool,
+    window,
+)
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
@@ -30,12 +42,16 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         page_size: Annotated[int | None, Field(description="Variables per page (max 200).", ge=1, le=200)] = None,
         page_number: Annotated[int | None, Field(description="Page number, from 0.", ge=0)] = None,
         has_history: Annotated[bool | None, Field(description="Only variables that keep a value history.")] = None,
+        offset: Offset = None,
     ) -> str:
         """List a device's monitored variables (SNMP / driver metrics) with current value and unit."""
 
         async def action(client: DomotzClient) -> Any:
-            params = {"page_size": page_size, "page_number": page_number, "has_history": has_history}
-            return await client.get(f"agent/{agent_id}/device/{device_id}/variable", params)
+            paging, number, size, start = locate(offset, page_number, page_size)
+            variables = await client.get(f"agent/{agent_id}/device/{device_id}/variable", paging | {"has_history": has_history})
+            if not isinstance(variables, list):
+                return variables
+            return page_result("variables", variables, number, size, start)
 
         return await run_tool("domotz_metrics_variables_list", client_factory, action)
 

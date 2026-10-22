@@ -34,20 +34,23 @@ A request to `/mcp` without the key gets HTTP 401; an unknown region does not bl
 
 All tools return a JSON string. `agent_id` comes from `domotz_agents_list` and `device_id` from
 `domotz_devices_list`. History tools take an optional ISO 8601 window (`from_time`, `to_time`).
+The two paged lists also take `offset` (a 0-based record position that overrides `page_number`)
+and return `has_more`, `offset` and `next_offset`: pass `next_offset` to continue, because when a
+page is cut to fit the response size limit the rest of it is on no other page number.
 
 | Tool | Purpose | Parameters (required in **bold**) |
 |---|---|---|
 | `domotz_navigate` | Describe the tools of one area (changes nothing) | **domain** (`agents`, `devices`, `metrics`, `network`, `alerts`, `power`) |
 | `domotz_back` | List every area and its tools (changes nothing) | - |
 | `domotz_status` | Connection check and the key's API call usage and limits | - |
-| `domotz_agents_list` | Collectors (one per site): status, IP, location, licence | display_name, page_size, page_number |
+| `domotz_agents_list` | Collectors (one per site): status, IP, location, licence | display_name, page_size, page_number, offset |
 | `domotz_agents_get` | One collector's details | **agent_id** |
 | `domotz_devices_list` | Devices on a collector's network, with counts by status | **agent_id**, show_hidden, show_excluded |
 | `domotz_devices_get` | One device: vendor, model, OS, IP / MAC, status, importance | **agent_id**, **device_id** |
 | `domotz_devices_uptime` | A device's uptime over a window | **agent_id**, **device_id**, from_time, to_time |
 | `domotz_devices_history` | A device's state-change (online / offline / down) events | **agent_id**, **device_id**, from_time, to_time |
 | `domotz_devices_inventory` | A device's inventory fields (owner, location, notes, ...) | **agent_id**, **device_id** |
-| `domotz_metrics_variables_list` | A device's monitored variables with current values | **agent_id**, **device_id**, page_size, page_number, has_history |
+| `domotz_metrics_variables_list` | A device's monitored variables with current values | **agent_id**, **device_id**, page_size, page_number, has_history, offset |
 | `domotz_metrics_variable_history` | Value history of one variable | **agent_id**, **device_id**, **variable_id**, from_time, to_time |
 | `domotz_metrics_snmp_sensors_list` | Custom SNMP sensors configured on a device | **agent_id**, **device_id** |
 | `domotz_metrics_sensor_history` | Value history of one SNMP sensor | **agent_id**, **device_id**, **sensor_id**, from_time, to_time |
