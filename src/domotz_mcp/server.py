@@ -25,6 +25,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ._arguments import EnvelopeFastMCP
 from .api_client import DomotzClient, DomotzCredentials
 from .config import API_HOST_SUFFIX, API_URL_TEMPLATE, DEFAULT_REGION, REGION_ALIASES, Settings
 
@@ -145,7 +146,7 @@ class GatewayCredentialsMiddleware:
 
 def create_mcp_server(settings: Settings | None = None) -> FastMCP:
     """Build the FastMCP server and register every tool."""
-    mcp = FastMCP(
+    mcp = EnvelopeFastMCP(
         name="domotz-mcp",
         instructions=INSTRUCTIONS,
         # The service sits behind the gateway, so Host is never localhost;
