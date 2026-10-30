@@ -6,8 +6,11 @@
     "type": "auto",
     "tests": [
       "tests/test_tools.py::test_alerts_list_requires_window",
-      "tests/test_tools.py::test_alerts_list_returns_window_results"
-    ]
+      "tests/test_api_client.py::test_alerts_list_rejects_inverted_window",
+      "tests/test_api_client.py::test_alerts_list_returns_window_results"
+    ],
+    "result": "pass",
+    "evidence": "dev-leg note: tests relocated from the design's suggested test_tools.py-only placement — missing-argument behaviour is a generic EnvelopeFastMCP path (test_tools.py), while the mocked-HTTP window/filter behaviour follows this repo's existing convention of living in test_api_client.py (see test_outlet_control_requires_confirm). `uv run pytest -k alert -v` on 4f12b5a: all 3 tests PASSED (58 passed, 186 deselected, 1 warning in 1.54s)."
   },
   {
     "id": "TC2",
@@ -15,8 +18,10 @@
     "text": "Given more alerts than fit one page, when domotz_alerts_list is called with page_size/offset, then it returns has_more and next_offset the same way every other list tool does.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_page_size_capped_at_200"
-    ]
+      "tests/test_tools.py::test_page_size_capped_at_200[domotz_alerts_list]"
+    ],
+    "result": "pass",
+    "evidence": "dev-leg note: test_page_size_capped_at_200 is parametrized over a fixed tool list in this repo (not auto-applied to every paged tool) — added domotz_alerts_list to that list. The page/offset mechanics themselves reuse locate()/page_result(), already covered generically by test_cut_pages_continue_without_gaps_* in test_api_client.py. `uv run pytest -k alert -v` on 4f12b5a: test_page_size_capped_at_200[domotz_alerts_list] PASSED."
   },
   {
     "id": "TC3",
@@ -24,8 +29,10 @@
     "text": "Given an alert_id, when domotz_alerts_resolve is called without confirm: true, then it returns sent: false and Domotz is never called.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_alerts_resolve_requires_confirm"
-    ]
+      "tests/test_api_client.py::test_alerts_resolve_requires_confirm"
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -k alert -v` on 4f12b5a: test_alerts_resolve_requires_confirm PASSED. Asserts result[\"sent\"] is False and rec.requests == [] (mock transport never called)."
   },
   {
     "id": "TC4",
@@ -33,8 +40,10 @@
     "text": "Given an alert_id and confirm: true, when domotz_alerts_resolve is called, then it calls POST /alert/{alert_id}/resolve and returns sent: true.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_alerts_resolve_sends_when_confirmed"
-    ]
+      "tests/test_api_client.py::test_alerts_resolve_sends_when_confirmed"
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -k alert -v` on 4f12b5a: test_alerts_resolve_sends_when_confirmed PASSED. Asserts rec.calls(\"alert/3/resolve\", \"POST\") and result == {sent: true, alert_id: 3, ...}."
   },
   {
     "id": "TC4b",
@@ -57,9 +66,11 @@
     "text": "Given a valid API key, when domotz_alert_rules_list is called, then it returns the account's Alert Rules; when domotz_alert_rules_get is called with an unknown alert_rule_id, then it returns a not_found envelope.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_alert_rules_list_returns_rules",
-      "tests/test_tools.py::test_alert_rules_get_not_found"
-    ]
+      "tests/test_api_client.py::test_alert_rules_list_returns_rules",
+      "tests/test_api_client.py::test_alert_rules_get_not_found"
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -k alert -v` on 4f12b5a: both PASSED. not_found path exercised via a mocked 404 from Domotz, classified by the existing DomotzError/classify_status mapping (no new error-mapping code)."
   },
   {
     "id": "TC6",
@@ -67,11 +78,13 @@
     "text": "Given an alert_rule_id and agent_id, when domotz_alert_rules_bind_agent / domotz_alert_rules_unbind_agent are called without confirm: true, then they return sent: false; with confirm: true, then they call POST / DELETE on the agent binding path.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_alert_rules_bind_agent_requires_confirm",
-      "tests/test_tools.py::test_alert_rules_bind_agent_sends_when_confirmed",
-      "tests/test_tools.py::test_alert_rules_unbind_agent_requires_confirm",
-      "tests/test_tools.py::test_alert_rules_unbind_agent_sends_when_confirmed"
-    ]
+      "tests/test_api_client.py::test_alert_rule_binding_requires_confirm[domotz_alert_rules_bind_agent-args0-alert-rule/5/agent/7/binding]",
+      "tests/test_api_client.py::test_alert_rule_binding_requires_confirm[domotz_alert_rules_unbind_agent-args1-alert-rule/5/agent/7/binding]",
+      "tests/test_api_client.py::test_alert_rules_bind_agent_sends_when_confirmed",
+      "tests/test_api_client.py::test_alert_rules_unbind_agent_sends_when_confirmed"
+    ],
+    "result": "pass",
+    "evidence": "dev-leg note: the two confirm-gate cases were merged into one parametrized test (test_alert_rule_binding_requires_confirm) matching this repo's existing style for the per-endpoint-path tests. `uv run pytest -k alert -v` on 4f12b5a: all 4 PASSED."
   },
   {
     "id": "TC7",
@@ -79,11 +92,13 @@
     "text": "Given an alert_rule_id, agent_id and device_id, when domotz_alert_rules_bind_device / domotz_alert_rules_unbind_device are called without confirm: true, then they return sent: false; with confirm: true, then they call POST / DELETE on the device binding path.",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_alert_rules_bind_device_requires_confirm",
-      "tests/test_tools.py::test_alert_rules_bind_device_sends_when_confirmed",
-      "tests/test_tools.py::test_alert_rules_unbind_device_requires_confirm",
-      "tests/test_tools.py::test_alert_rules_unbind_device_sends_when_confirmed"
-    ]
+      "tests/test_api_client.py::test_alert_rule_binding_requires_confirm[domotz_alert_rules_bind_device-args2-alert-rule/5/agent/7/device/9/binding]",
+      "tests/test_api_client.py::test_alert_rule_binding_requires_confirm[domotz_alert_rules_unbind_device-args3-alert-rule/5/agent/7/device/9/binding]",
+      "tests/test_api_client.py::test_alert_rules_bind_device_sends_when_confirmed",
+      "tests/test_api_client.py::test_alert_rules_unbind_device_sends_when_confirmed"
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -k alert -v` on 4f12b5a: all 4 PASSED (same parametrized-test note as TC6)."
   },
   {
     "id": "TC8",
@@ -93,8 +108,12 @@
     "tests": [
       "tests/test_tools.py::test_all_tools_listed_without_navigation",
       "tests/test_tools.py::test_tool_without_credentials_returns_not_configured",
-      "tests/test_tools.py::test_error_envelope"
-    ]
+      "tests/test_tools.py::test_error_envelope",
+      "tests/test_tools.py::test_required_params[domotz_alerts_list / _resolve / _rules_* ]",
+      "tests/test_tools.py::test_annotations_match_side_effects[domotz_alerts_list / _resolve / _rules_* ]"
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -q` on 4f12b5a: 244 passed (was 193 before this change: 21 pre-existing tools x generic per-tool checks + shared tests; 8 new tools added to EXPECTED_TOOLS, picked up automatically by the generic parametrized checks). Live smoke test (initialize+tools/list with placeholder X-Domotz-API-Key, local server on :18099): tools/list returned exactly the 29 expected tool names, including all 8 new ones with the required-param sets matching the design table; request to /mcp with no header returned HTTP 401; GET /health returned 200."
   },
   {
     "id": "TC9",
@@ -104,6 +123,8 @@
     "tests": [
       "tests/test_tools.py::test_all_tools_listed_without_navigation",
       "tests/test_contract_types.py"
-    ]
+    ],
+    "result": "pass",
+    "evidence": "`uv run pytest -q` on 4f12b5a: 244 passed, 0 failed, 1 pre-existing unrelated deprecation warning (starlette TestClient). No pre-existing test was modified except EXPECTED_TOOLS/WRITE_TOOLS/DESTRUCTIVE_TOOLS additions and the page_size parametrize list in test_tools.py (adding new entries, not changing existing ones) and the destructiveHint assertion split into WRITE_TOOLS vs DESTRUCTIVE_TOOLS (see Self-test note on ALERT_ACTION); test_contract_types.py untouched and green for all 21 pre-existing tools."
   }
 ]
