@@ -121,6 +121,9 @@ class DomotzClient:
     async def post(self, path: str) -> Any:
         return await self.request("POST", path)
 
+    async def delete(self, path: str) -> Any:
+        return await self.request("DELETE", path)
+
     async def request(self, method: str, path: str, params: dict[str, Any] | None = None) -> Any:
         http = self._http or _get_shared_http_client()
         url = f"{self.base_url}/{path.lstrip('/')}"
