@@ -45,10 +45,28 @@ EXPECTED_TOOLS: dict[str, set[str]] = {
     "domotz_network_ip_conflicts": {"agent_id"},
     "domotz_alerts_profiles_list": set(),
     "domotz_alerts_device_list": AD,
+    "domotz_alerts_list": {"from_time", "to_time"},
+    "domotz_alerts_resolve": {"alert_id", "confirm"},
+    "domotz_alert_rules_list": set(),
+    "domotz_alert_rules_get": {"alert_rule_id"},
+    "domotz_alert_rules_bind_agent": {"alert_rule_id", "agent_id", "confirm"},
+    "domotz_alert_rules_unbind_agent": {"alert_rule_id", "agent_id", "confirm"},
+    "domotz_alert_rules_bind_device": {"alert_rule_id", "agent_id", "device_id", "confirm"},
+    "domotz_alert_rules_unbind_device": {"alert_rule_id", "agent_id", "device_id", "confirm"},
     "domotz_power_outlets_list": AD,
     "domotz_power_outlet_control": AD | {"outlet_id", "action", "confirm"},
 }
-WRITE_TOOLS = {"domotz_power_outlet_control"}
+WRITE_TOOLS = {
+    "domotz_power_outlet_control",
+    "domotz_alerts_resolve",
+    "domotz_alert_rules_bind_agent",
+    "domotz_alert_rules_unbind_agent",
+    "domotz_alert_rules_bind_device",
+    "domotz_alert_rules_unbind_device",
+}
+# Of the write tools, only this one is destructive (cuts power to plugged-in equipment).
+# The alert-management writes are additive/reversible (ALERT_ACTION, src/domotz_mcp/tools/_common.py).
+DESTRUCTIVE_TOOLS = {"domotz_power_outlet_control"}
 
 
 @pytest.fixture(scope="module")
@@ -78,11 +96,26 @@ def test_annotations_match_side_effects(tools, name):
     annotations = tools[name].annotations
     assert annotations is not None
     assert annotations.readOnlyHint is (name not in WRITE_TOOLS)
-    assert bool(annotations.destructiveHint) is (name in WRITE_TOOLS)
+    assert bool(annotations.destructiveHint) is (name in DESTRUCTIVE_TOOLS)
 
 
 def test_power_tool_says_when_to_use_it(tools):
     assert "explicitly asks" in tools["domotz_power_outlet_control"].description
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "domotz_alerts_resolve",
+        "domotz_alert_rules_bind_agent",
+        "domotz_alert_rules_unbind_agent",
+        "domotz_alert_rules_bind_device",
+        "domotz_alert_rules_unbind_device",
+    ],
+)
+def test_alert_write_tools_say_when_to_use_them(tools, name):
+    assert "explicitly asks" in tools[name].description
+    assert "confirm: true" in tools[name].description
 
 
 def test_instructions_budget():
@@ -111,12 +144,21 @@ def test_tool_without_credentials_returns_not_configured():
     assert json.loads(content[0].text)["error"]["code"] == "not_configured"
 
 
+def test_alerts_list_requires_window():
+    # from_time/to_time are required on this tool, so a missing one is rejected before credentials
+    # are even checked (EnvelopeFastMCP's required-argument path, see test_argument_errors.py).
+    content, _ = asyncio.run(create_mcp_server().call_tool("domotz_alerts_list", {"from_time": "2026-06-01T00:00:00Z"}))
+    error = json.loads(content[0].text)["error"]
+    assert error["code"] == "invalid_argument"
+    assert "to_time" in error["message"]
+
+
 def test_navigate_needs_no_credentials():
     content, _ = asyncio.run(create_mcp_server().call_tool("domotz_navigate", {"domain": "power"}))
     assert json.loads(content[0].text)["tools"] == ["domotz_power_outlets_list", "domotz_power_outlet_control"]
 
 
-@pytest.mark.parametrize("name", ["domotz_agents_list", "domotz_metrics_variables_list"])
+@pytest.mark.parametrize("name", ["domotz_agents_list", "domotz_metrics_variables_list", "domotz_alerts_list"])
 def test_page_size_capped_at_200(tools, name):
     schema = tools[name].inputSchema["properties"]["page_size"]
     maxima = [schema.get("maximum")] + [option.get("maximum") for option in schema.get("anyOf", [])]

@@ -45,7 +45,21 @@ DOMAINS: dict[str, tuple[str, list[str]]] = {
         "Site topology, monitored networks and IP conflicts.",
         ["domotz_network_topology", "domotz_network_interfaces", "domotz_network_ip_conflicts"],
     ),
-    "alerts": ("Alert profiles and the profiles bound to a device.", ["domotz_alerts_profiles_list", "domotz_alerts_device_list"]),
+    "alerts": (
+        "Fired alerts (list, resolve), Alert Rules (list, get, bind/unbind to a collector or device), and legacy alert profiles.",
+        [
+            "domotz_alerts_list",
+            "domotz_alerts_resolve",
+            "domotz_alert_rules_list",
+            "domotz_alert_rules_get",
+            "domotz_alert_rules_bind_agent",
+            "domotz_alert_rules_unbind_agent",
+            "domotz_alert_rules_bind_device",
+            "domotz_alert_rules_unbind_device",
+            "domotz_alerts_profiles_list",
+            "domotz_alerts_device_list",
+        ],
+    ),
     "power": ("Smart power outlets: list, and switch on / off / cycle (changes power).", ["domotz_power_outlets_list", "domotz_power_outlet_control"]),
 }
 

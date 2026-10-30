@@ -4,7 +4,9 @@ An [MCP](https://modelcontextprotocol.io) server for the [Domotz](https://www.do
 API (v1), the network monitoring platform MSPs run on client sites. It lets an AI agent read
 collectors and the devices they discover, device uptime and state-change history, inventory
 fields, variables and SNMP sensors with their history, network topology, monitored networks,
-IP conflicts, alert profiles and smart power outlets and, on explicit request, switch an outlet.
+IP conflicts, fired alerts and Alert Rules, legacy alert profiles and smart power outlets, and,
+on explicit request, resolve an alert, (un)bind an Alert Rule to a collector or device, or
+switch an outlet.
 
 - Transport: MCP Streamable HTTP at `POST /mcp`, health probe at `GET /health`
 - Stateless and multi-tenant: the key arrives on every request as an HTTP header and is never
@@ -129,8 +131,16 @@ page is cut to fit the response size limit the rest of it is on no other page nu
 | `domotz_network_topology` | Site topology: which devices connect where | **agent_id** |
 | `domotz_network_interfaces` | Networks (interfaces / subnets) a collector monitors | **agent_id** |
 | `domotz_network_ip_conflicts` | Active IP address conflicts | **agent_id** |
-| `domotz_alerts_profiles_list` | Alert profiles of the account | - |
-| `domotz_alerts_device_list` | Alert profiles bound to one device | **agent_id**, **device_id** |
+| `domotz_alerts_list` | Alerts that fired in a time window, newest first | **from_time**, **to_time**, severity, status, alert_rule_id, agent_id, device_id, page_size, page_number, offset |
+| `domotz_alerts_resolve` | Mark a fired alert resolved (**write**) | **alert_id**, **confirm** |
+| `domotz_alert_rules_list` | Alert Rules configured on the account | - |
+| `domotz_alert_rules_get` | One Alert Rule's details | **alert_rule_id** |
+| `domotz_alert_rules_bind_agent` | Attach an Alert Rule to a collector (**write**) | **alert_rule_id**, **agent_id**, **confirm** |
+| `domotz_alert_rules_unbind_agent` | Detach an Alert Rule from a collector (**write**) | **alert_rule_id**, **agent_id**, **confirm** |
+| `domotz_alert_rules_bind_device` | Attach an Alert Rule to a device (**write**) | **alert_rule_id**, **agent_id**, **device_id**, **confirm** |
+| `domotz_alert_rules_unbind_device` | Detach an Alert Rule from a device (**write**) | **alert_rule_id**, **agent_id**, **device_id**, **confirm** |
+| `domotz_alerts_profiles_list` | Alert profiles of the account (legacy) | - |
+| `domotz_alerts_device_list` | Alert profiles bound to one device (legacy) | **agent_id**, **device_id** |
 | `domotz_power_outlets_list` | A PDU's / smart plug's outlets and power state | **agent_id**, **device_id** |
 | `domotz_power_outlet_control` | Switch an outlet on, off or power-cycle it (**write**) | **agent_id**, **device_id**, **outlet_id**, **action** (`on`, `off`, `cycle`), **confirm** |
 
@@ -191,9 +201,18 @@ uv run pytest
 ## Delivery notes
 
 - **All tools always listed.** Older versions only listed navigation tools until one was
-  called. Behind a stateless gateway that hid every other tool, so this version lists all 21
+  called. Behind a stateless gateway that hid every other tool, so this version lists all 29
   tools up front. `domotz_navigate` and `domotz_back` remain for compatibility and only
   describe the tools.
+- **Alert management (PRD-21260).** Added `domotz_alerts_list` / `domotz_alerts_resolve` (fired
+  alerts) and `domotz_alert_rules_list` / `_get` / `_bind_agent` / `_unbind_agent` /
+  `_bind_device` / `_unbind_device` (Alert Rules) to cover the account's current alert-management
+  surface (`GET /alert`, `GET /alert-rule`, and the binding endpoints). The two pre-existing
+  `domotz_alerts_profiles_list` / `domotz_alerts_device_list` tools are unchanged and kept as
+  legacy — they call `alert-profile`, which the current public OpenAPI definition no longer lists
+  as a named resource; removing them would be a breaking change this ticket did not ask for.
+  Authoring new Alert Rules and binding notification channels are out of scope; see the ticket's
+  design doc for why.
 - **Built on the documented endpoints.** `domotz_alerts_device_list` used a route that is not in
   the Domotz OpenAPI definition; it now reads the collector's device bindings
   (`/alert-profile/binding/agent/{agent_id}/device`) and keeps the requested device.

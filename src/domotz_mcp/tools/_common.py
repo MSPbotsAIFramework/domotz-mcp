@@ -33,6 +33,9 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHin
 LOCAL = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
 # Switching an outlet cuts or restores power to whatever is plugged in.
 POWER_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True)
+# Resolving an alert or (un)binding an Alert Rule changes Domotz-side state but, unlike
+# POWER_ACTION, never cuts power or deletes monitored data: additive/reversible, not destructive.
+ALERT_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 
 NOT_CONFIGURED = error_envelope(
     "not_configured", "Domotz credentials are missing for this request (X-Domotz-API-Key).", False

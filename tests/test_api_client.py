@@ -166,6 +166,9 @@ async def test_bad_window_is_rejected(monkeypatch):
         ("domotz_network_interfaces", {"agent_id": 7}, "agent/7/network/interfaces"),
         ("domotz_network_ip_conflicts", {"agent_id": 7}, "agent/7/ip-conflict"),
         ("domotz_alerts_profiles_list", {}, "alert-profile"),
+        ("domotz_alerts_list", {"from_time": "2026-06-01T00:00:00Z", "to_time": "2026-06-02T00:00:00Z"}, "alert"),
+        ("domotz_alert_rules_list", {}, "alert-rule"),
+        ("domotz_alert_rules_get", {"alert_rule_id": 5}, "alert-rule/5"),
         ("domotz_power_outlets_list", {"agent_id": 7, "device_id": 9}, "agent/7/device/9/power-outlet"),
     ],
 )
@@ -195,6 +198,113 @@ async def test_outlet_control_posts_action(monkeypatch):
     result = await _call(monkeypatch, rec, "domotz_power_outlet_control", args)
     assert rec.calls("agent/7/device/9/power-outlet/3/action/cycle", "POST")
     assert result["sent"] is True and result["outlet_id"] == "3"
+
+
+# ---- Alerts: fired alerts, resolve, Alert Rules (PRD-21260) ----------------
+
+
+async def test_alerts_list_rejects_inverted_window(monkeypatch):
+    # Missing from_time/to_time is a separate case: both are required parameters on this tool
+    # (unlike the optional From/To elsewhere), so EnvelopeFastMCP's required-argument check
+    # rejects that before the tool body runs — see test_alerts_list_requires_window in test_tools.py.
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "domotz_alerts_list", {"from_time": "2026-06-02", "to_time": "2026-06-01"})
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_alerts_list_returns_window_results(monkeypatch):
+    rec = Recorder({"alert": [{"id": 1, "severity": "high"}]})
+    args = {"from_time": "2026-06-01T00:00:00Z", "to_time": "2026-06-02T00:00:00Z", "severity": "high", "agent_id": 7}
+    result = await _call(monkeypatch, rec, "domotz_alerts_list", args)
+    params = rec.requests[0].url.params
+    assert (params["from"], params["to"], params["severity"], params["agent_id"]) == (
+        "2026-06-01T00:00:00Z",
+        "2026-06-02T00:00:00Z",
+        "high",
+        "7",
+    )
+    assert result["count"] == 1
+
+
+async def test_alerts_resolve_requires_confirm(monkeypatch):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "domotz_alerts_resolve", {"alert_id": 3, "confirm": False})
+    assert result["sent"] is False
+    assert rec.requests == []
+
+
+async def test_alerts_resolve_sends_when_confirmed(monkeypatch):
+    rec = Recorder({"POST alert/3/resolve": lambda r: httpx.Response(204, content=b"")})
+    result = await _call(monkeypatch, rec, "domotz_alerts_resolve", {"alert_id": 3, "confirm": True})
+    assert rec.calls("alert/3/resolve", "POST")
+    assert result["sent"] is True and result["alert_id"] == 3
+
+
+async def test_alert_rules_list_returns_rules(monkeypatch):
+    rec = Recorder({"alert-rule": [{"id": 1}, {"id": 2}]})
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_list", {})
+    assert len(result) == 2
+
+
+async def test_alert_rules_get_not_found(monkeypatch):
+    rec = Recorder({"alert-rule/99": lambda r: httpx.Response(404, json={"message": "Not found"})})
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_get", {"alert_rule_id": 99})
+    assert result["error"]["code"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    "tool,args,path",
+    [
+        ("domotz_alert_rules_bind_agent", {"alert_rule_id": 5, "agent_id": 7}, "alert-rule/5/agent/7/binding"),
+        ("domotz_alert_rules_unbind_agent", {"alert_rule_id": 5, "agent_id": 7}, "alert-rule/5/agent/7/binding"),
+        (
+            "domotz_alert_rules_bind_device",
+            {"alert_rule_id": 5, "agent_id": 7, "device_id": 9},
+            "alert-rule/5/agent/7/device/9/binding",
+        ),
+        (
+            "domotz_alert_rules_unbind_device",
+            {"alert_rule_id": 5, "agent_id": 7, "device_id": 9},
+            "alert-rule/5/agent/7/device/9/binding",
+        ),
+    ],
+)
+async def test_alert_rule_binding_requires_confirm(monkeypatch, tool, args, path):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, tool, args | {"confirm": False})
+    assert result["sent"] is False
+    assert rec.requests == []
+
+
+async def test_alert_rules_bind_agent_sends_when_confirmed(monkeypatch):
+    rec = Recorder({"POST alert-rule/5/agent/7/binding": lambda r: httpx.Response(204, content=b"")})
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_bind_agent", {"alert_rule_id": 5, "agent_id": 7, "confirm": True})
+    assert rec.calls("alert-rule/5/agent/7/binding", "POST")
+    assert result["sent"] is True
+
+
+async def test_alert_rules_unbind_agent_sends_when_confirmed(monkeypatch):
+    rec = Recorder({"DELETE alert-rule/5/agent/7/binding": lambda r: httpx.Response(204, content=b"")})
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_unbind_agent", {"alert_rule_id": 5, "agent_id": 7, "confirm": True})
+    assert rec.calls("alert-rule/5/agent/7/binding", "DELETE")
+    assert result["sent"] is True
+
+
+async def test_alert_rules_bind_device_sends_when_confirmed(monkeypatch):
+    rec = Recorder({"POST alert-rule/5/agent/7/device/9/binding": lambda r: httpx.Response(204, content=b"")})
+    args = {"alert_rule_id": 5, "agent_id": 7, "device_id": 9, "confirm": True}
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_bind_device", args)
+    assert rec.calls("alert-rule/5/agent/7/device/9/binding", "POST")
+    assert result["sent"] is True
+
+
+async def test_alert_rules_unbind_device_sends_when_confirmed(monkeypatch):
+    rec = Recorder({"DELETE alert-rule/5/agent/7/device/9/binding": lambda r: httpx.Response(204, content=b"")})
+    args = {"alert_rule_id": 5, "agent_id": 7, "device_id": 9, "confirm": True}
+    result = await _call(monkeypatch, rec, "domotz_alert_rules_unbind_device", args)
+    assert rec.calls("alert-rule/5/agent/7/device/9/binding", "DELETE")
+    assert result["sent"] is True
 
 
 # ---- Page-number paging that survives truncation (offset / next_offset) -----------------------------
