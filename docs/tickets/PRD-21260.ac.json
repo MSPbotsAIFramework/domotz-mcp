@@ -1,0 +1,109 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given a valid API key, when domotz_alerts_list is called with a valid from_time/to_time window, then it returns the account's alerts for that window; when from_time or to_time is missing, then it returns an invalid_argument envelope without calling Domotz.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alerts_list_requires_window",
+      "tests/test_tools.py::test_alerts_list_returns_window_results"
+    ]
+  },
+  {
+    "id": "TC2",
+    "ac": "AC1",
+    "text": "Given more alerts than fit one page, when domotz_alerts_list is called with page_size/offset, then it returns has_more and next_offset the same way every other list tool does.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_page_size_capped_at_200"
+    ]
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given an alert_id, when domotz_alerts_resolve is called without confirm: true, then it returns sent: false and Domotz is never called.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alerts_resolve_requires_confirm"
+    ]
+  },
+  {
+    "id": "TC4",
+    "ac": "AC2",
+    "text": "Given an alert_id and confirm: true, when domotz_alerts_resolve is called, then it calls POST /alert/{alert_id}/resolve and returns sent: true.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alerts_resolve_sends_when_confirmed"
+    ]
+  },
+  {
+    "id": "TC4b",
+    "ac": "AC2",
+    "text": "Given a real Domotz test account, when an agent resolves a real alert end to end, then the alert shows resolved in the Domotz portal.",
+    "type": "manual",
+    "steps": [
+      "Obtain a Domotz trial/test account API key",
+      "Trigger or find a currently-open alert",
+      "Call domotz_alerts_resolve with confirm: true for that alert_id",
+      "Check the Domotz portal for the alert's status"
+    ],
+    "expect": "The alert shows resolved in the Domotz portal",
+    "result": "untested",
+    "evidence": "needs a real vendor account — not available at design or dev time; see references/mcp-track.md 2.5 (no test account does not block this ticket)"
+  },
+  {
+    "id": "TC5",
+    "ac": "AC3",
+    "text": "Given a valid API key, when domotz_alert_rules_list is called, then it returns the account's Alert Rules; when domotz_alert_rules_get is called with an unknown alert_rule_id, then it returns a not_found envelope.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alert_rules_list_returns_rules",
+      "tests/test_tools.py::test_alert_rules_get_not_found"
+    ]
+  },
+  {
+    "id": "TC6",
+    "ac": "AC4",
+    "text": "Given an alert_rule_id and agent_id, when domotz_alert_rules_bind_agent / domotz_alert_rules_unbind_agent are called without confirm: true, then they return sent: false; with confirm: true, then they call POST / DELETE on the agent binding path.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alert_rules_bind_agent_requires_confirm",
+      "tests/test_tools.py::test_alert_rules_bind_agent_sends_when_confirmed",
+      "tests/test_tools.py::test_alert_rules_unbind_agent_requires_confirm",
+      "tests/test_tools.py::test_alert_rules_unbind_agent_sends_when_confirmed"
+    ]
+  },
+  {
+    "id": "TC7",
+    "ac": "AC5",
+    "text": "Given an alert_rule_id, agent_id and device_id, when domotz_alert_rules_bind_device / domotz_alert_rules_unbind_device are called without confirm: true, then they return sent: false; with confirm: true, then they call POST / DELETE on the device binding path.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_alert_rules_bind_device_requires_confirm",
+      "tests/test_tools.py::test_alert_rules_bind_device_sends_when_confirmed",
+      "tests/test_tools.py::test_alert_rules_unbind_device_requires_confirm",
+      "tests/test_tools.py::test_alert_rules_unbind_device_sends_when_confirmed"
+    ]
+  },
+  {
+    "id": "TC8",
+    "ac": "AC6",
+    "text": "Given no credentials, when tools/list is called, then all 8 new tools are listed; given a 401/404/429/5xx response from Domotz, when any new tool is called, then it returns the matching error envelope code.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_all_tools_listed_without_navigation",
+      "tests/test_tools.py::test_tool_without_credentials_returns_not_configured",
+      "tests/test_tools.py::test_error_envelope"
+    ]
+  },
+  {
+    "id": "TC9",
+    "ac": "AC7",
+    "text": "Given the full existing test suite, when it is run after this change, then all pre-existing tools (21) keep their exact tools/list snapshot and parameter-type contract.",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_all_tools_listed_without_navigation",
+      "tests/test_contract_types.py"
+    ]
+  }
+]
